@@ -64,6 +64,7 @@ export default function DashboardClient({ user }) {
   const [llamadas, setLlamadas]     = useState([]);
   const [porHora, setPorHora]       = useState([]);
   const [porCampana, setPorCampana] = useState([]);
+  const [porDia, setPorDia]           = useState([]);
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState('');
   const [clock, setClock]           = useState('');
@@ -83,17 +84,19 @@ export default function DashboardClient({ user }) {
       const params = new URLSearchParams({ desde, hasta });
       if (campanaFiltro) params.set('campana', campanaFiltro);
 
-      const [rKpis, rLlamadas, rHora, rCampana] = await Promise.all([
+      const [rKpis, rLlamadas, rHora, rCampana, rDia] = await Promise.all([
         fetch(`/api/kpis?${params}`),
         fetch(`/api/llamadas?${params}&limit=500`),
         fetch(`/api/por-hora?${params}`),
         fetch(`/api/por-campana?${params}`),
+        fetch(`/api/por-dia?${params}`),
       ]);
       if (rKpis.status === 401) { window.location.href = '/'; return; }
       setKpis(await rKpis.json());
       setLlamadas(await rLlamadas.json());
       setPorHora(await rHora.json());
       setPorCampana(await rCampana.json());
+      setPorDia(await rDia.json());
     } catch {
       setError('Error al cargar datos.');
     } finally {
@@ -233,7 +236,7 @@ export default function DashboardClient({ user }) {
       <SectionLabel>Registro de llamadas</SectionLabel>
       <CallTable llamadas={llamadas} loading={loading} desde={desde} hasta={hasta} campana={campanaFiltro} />
 
-      <GraficasPanel porHora={porHora} loading={loading} esRango={esRango} />
+      <GraficasPanel porHora={porHora} porDia={porDia} loading={loading} esRango={esRango} />
 
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 0', borderTop:`0.5px solid ${C.border}`, marginTop:8 }}>
         <span style={{ fontSize:10, color:C.text3 }}>ViciTarif · PostgreSQL · Next.js</span>
