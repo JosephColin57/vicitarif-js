@@ -2,6 +2,9 @@
 export const metadata = {
   title:       'ViciTarif — Tarificador Vicidial',
   description: 'Dashboard de tarificación de llamadas para Vicidial',
+  icons: {
+    icon: '/favicon.svg',
+  },
 };
 
 export default function RootLayout({ children }) {

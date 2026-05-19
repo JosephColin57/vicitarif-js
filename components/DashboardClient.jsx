@@ -142,9 +142,8 @@ export default function DashboardClient({ user }) {
       {/* Topbar */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'1rem', flexWrap:'wrap', gap:8 }}>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <div style={{ width:8, height:8, borderRadius:'50%', background:C.teal, animation:'pulse 2s infinite' }} />
           <span style={{ fontSize:13, fontWeight:600, letterSpacing:'0.12em', color:C.text2, textTransform:'uppercase' }}>
-            ViciTarif <span style={{ fontSize:11, color:C.text3 }}>v2.4</span>
+            ViciTarif <span style={{ fontSize:11, color:C.text3 }}>v2.0</span>
           </span>
           <span style={{ fontSize:11, color:C.text3 }}>{user.nombre}</span>
           <span style={{ fontSize:10, padding:'2px 8px', borderRadius:3, background:`${rolColor[user.role]||C.text3}22`, color:rolColor[user.role]||C.text3, border:`0.5px solid ${rolColor[user.role]||C.text3}44` }}>
@@ -152,9 +151,6 @@ export default function DashboardClient({ user }) {
           </span>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, color:C.teal, background:'rgba(34,211,165,0.1)', border:'0.5px solid rgba(34,211,165,0.3)', padding:'4px 10px', borderRadius:4 }}>
-            <span style={{ width:6, height:6, borderRadius:'50%', background:C.teal, display:'inline-block' }} /> En vivo
-          </div>
           <span style={{ fontSize:12, color:C.text3, fontVariantNumeric:'tabular-nums' }}>{clock}</span>
           <button onClick={handleLogout} style={{ background:'transparent', border:'0.5px solid rgba(239,68,68,0.3)', borderRadius:4, color:'#f87171', fontSize:11, padding:'5px 10px', cursor:'pointer', fontFamily:FONT }}>Salir</button>
         </div>
@@ -179,7 +175,7 @@ export default function DashboardClient({ user }) {
         </div>
 
         {/* Separador */}
-        <div style={{ width:'0.5px', height:20, background:C.border }} />
+        <div style={{ width:'0.5px', height:20, background:C.border, marginLeft:'auto' }} />
 
         {/* Fechas manuales */}
         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
@@ -197,10 +193,6 @@ export default function DashboardClient({ user }) {
           </button>
         </div>
 
-        {/* Label del rango activo */}
-        <span style={{ fontSize:11, color:C.text3, marginLeft:'auto' }}>
-          {esRango ? `📅 ${labelRango}` : `📅 ${labelRango}`}
-        </span>
       </div>
 
       {error && (
