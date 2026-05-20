@@ -190,9 +190,6 @@ export default function DashboardClient({ user }) {
           </span>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color:C.teal, background:'rgba(34,211,165,0.1)', border:'0.5px solid rgba(34,211,165,0.3)', padding:'4px 10px', borderRadius:4 }}>
-            <span style={{ width:6, height:6, borderRadius:'50%', background:C.teal, display:'inline-block' }} /> En vivo
-          </div>
           <span style={{ fontSize:12, color:C.text3, fontVariantNumeric:'tabular-nums' }}>{clock}</span>
           <button onClick={handleLogout} style={{ background:'transparent', border:'0.5px solid rgba(239,68,68,0.3)', borderRadius:4, color:'#f87171', fontSize:11, padding:'5px 10px', cursor:'pointer', fontFamily:FONT }}>Salir</button>
         </div>
@@ -218,9 +215,7 @@ export default function DashboardClient({ user }) {
           <input type="date" value={hasta} onChange={e => { setHasta(e.target.value); setRangoActivo(''); }} style={inp} />
           <button onClick={fetchAll} style={{ background:C.blue, border:'none', borderRadius:4, color:'#fff', fontSize:11, padding:'5px 12px', cursor:'pointer', fontFamily:FONT }}>Aplicar</button>
         </div>
-        <span style={{ fontSize:11, color:C.text3, marginLeft:'auto' }}>
-          📅 {esRango ? `${desde} → ${hasta}` : desde}
-        </span>
+
       </div>
 
       {error && (

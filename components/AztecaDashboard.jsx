@@ -173,9 +173,6 @@ export default function AztecaDashboard({ user }) {
           </span>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color:C.teal, background:'rgba(34,211,165,0.1)', border:'0.5px solid rgba(34,211,165,0.3)', padding:'4px 10px', borderRadius:4 }}>
-            <span style={{ width:6, height:6, borderRadius:'50%', background:C.teal, display:'inline-block' }} /> En vivo
-          </div>
           <span style={{ fontSize:12, color:C.text3 }}>{clock}</span>
           <button onClick={handleLogout} style={{ background:'transparent', border:'0.5px solid rgba(239,68,68,0.3)', borderRadius:4, color:'#f87171', fontSize:11, padding:'5px 10px', cursor:'pointer', fontFamily:FONT }}>Salir</button>
         </div>
