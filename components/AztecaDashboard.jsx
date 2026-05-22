@@ -2,11 +2,12 @@
 // components/AztecaDashboard.jsx
 // Dashboard específico para datos de Azteca/Vicidial
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import useFechaUrl from './useFechaUrl';
 import NavTabs          from './NavTabs';
 import AztecaTabla       from './AztecaTabla';
 import ModalAztecaRec    from './ModalAztecaRec';
+import GraficaAzteca     from './GraficaAzteca';
 
 const C = {
   bg:'#0f1117', bg2:'#161b27', bg3:'#1e2535',
@@ -102,10 +103,14 @@ export default function AztecaDashboard({ user }) {
   const [kpis, setKpis]               = useState(null);
   const [llamadas, setLlamadas]       = useState([]);
   const [campanas, setCampanas]       = useState([]);
-  const [loading, setLoading]         = useState(true);
+  const [tendencia, setTendencia]     = useState([]);
+  const [loading, setLoading]         = useState(true);   // solo carga inicial
+  const [refreshing, setRefreshing]   = useState(false);  // refresh silencioso
   const [error, setError]             = useState('');
   const [clock, setClock]             = useState('');
   const [numeroModal, setNumeroModal] = useState(null);
+  const [herramienta, setHerramienta] = useState('todas');
+  const isFirstLoad = useRef(true);
 
   useEffect(() => {
     const tick = () => setClock(new Date().toLocaleTimeString('es-MX', { hour12:false }));
@@ -114,31 +119,44 @@ export default function AztecaDashboard({ user }) {
     return () => clearInterval(id);
   }, []);
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true); setError('');
+  const fetchAll = useCallback(async (silencioso = false) => {
+    // Primera carga: muestra loading completo
+    // Refresh automático: solo el indicador pequeño
+    if (isFirstLoad.current) {
+      setLoading(true);
+    } else {
+      setRefreshing(true);
+    }
+    setError('');
     try {
       const params = new URLSearchParams({ desde, hasta });
       if (campanaFiltro) params.set('campana', campanaFiltro);
+      if (herramienta && herramienta !== 'todas') params.set('herramienta', herramienta);
 
-      const [rKpis, rLlamadas, rCampanas] = await Promise.all([
+      const [rKpis, rLlamadas, rCampanas, rTendencia] = await Promise.all([
         fetch(`/api/azteca/kpis?${params}`),
         fetch(`/api/azteca/llamadas?${params}&limit=500`),
         fetch(`/api/azteca/campanas?desde=${desde}&hasta=${hasta}`),
+        fetch(`/api/azteca/tendencia?${params}`),
       ]);
       if (rKpis.status === 401) { window.location.href = '/'; return; }
       setKpis(await rKpis.json());
       setLlamadas(await rLlamadas.json());
       setCampanas(await rCampanas.json());
+      setTendencia(await rTendencia.json());
+      isFirstLoad.current = false;
     } catch {
       setError('Error al cargar datos de Azteca.');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }, [desde, hasta, campanaFiltro]);
+  }, [desde, hasta, campanaFiltro, herramienta]);
 
   useEffect(() => {
+    isFirstLoad.current = true; // nueva carga al cambiar fechas/filtros
     fetchAll();
-    const id = setInterval(fetchAll, 60_000);
+    const id = setInterval(() => fetchAll(true), 60_000);
     return () => clearInterval(id);
   }, [fetchAll]);
 
@@ -173,6 +191,15 @@ export default function AztecaDashboard({ user }) {
           </span>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color:C.teal, background:'rgba(34,211,165,0.1)', border:'0.5px solid rgba(34,211,165,0.3)', padding:'4px 10px', borderRadius:4 }}>
+            <span style={{ width:6, height:6, borderRadius:'50%', background:C.teal, display:'inline-block', animation: refreshing ? 'none' : 'pulse 2s infinite' }} />
+            {refreshing ? (
+              <span style={{ display:'flex', alignItems:'center', gap:5 }}>
+                <span style={{ width:10, height:10, border:'1.5px solid rgba(34,211,165,0.3)', borderTop:'1.5px solid #22d3a5', borderRadius:'50%', display:'inline-block', animation:'spin .7s linear infinite' }} />
+                Actualizando…
+              </span>
+            ) : 'En vivo'}
+          </div>
           <span style={{ fontSize:12, color:C.text3 }}>{clock}</span>
           <button onClick={handleLogout} style={{ background:'transparent', border:'0.5px solid rgba(239,68,68,0.3)', borderRadius:4, color:'#f87171', fontSize:11, padding:'5px 10px', cursor:'pointer', fontFamily:FONT }}>Salir</button>
         </div>
@@ -198,6 +225,30 @@ export default function AztecaDashboard({ user }) {
           <input type="date" value={hasta} onChange={e => { setHasta(e.target.value); setRangoActivo(''); }} style={inp} />
           <button onClick={fetchAll} style={{ background:C.blue, border:'none', borderRadius:4, color:'#fff', fontSize:11, padding:'5px 12px', cursor:'pointer', fontFamily:FONT }}>Aplicar</button>
         </div>
+
+        <div style={{ width:'0.5px', height:20, background:C.border }} />
+
+        {/* Costo total — inline en la barra */}
+        <div style={{ display:'flex', alignItems:'center', gap:8, background:'rgba(167,139,250,0.08)', border:'0.5px solid rgba(167,139,250,0.25)', borderRadius:6, padding:'6px 12px' }}>
+          <span style={{ fontSize:10, color:'#c4b5fd' }}>💲 Costo</span>
+          <span style={{ fontSize:14, fontWeight:700, color:C.text1, fontVariantNumeric:'tabular-nums' }}>
+            {loading ? '…' : `$${(kpis?.costo_total||0).toFixed(2)}`}
+          </span>
+        </div>
+
+        {/* Minutos totales — inline en la barra */}
+        <div style={{ display:'flex', alignItems:'center', gap:8, background:'rgba(56,189,248,0.08)', border:'0.5px solid rgba(56,189,248,0.22)', borderRadius:6, padding:'6px 12px' }}>
+          <span style={{ fontSize:10, color:'#7dd3fc' }}>⏱ Minutos</span>
+          <span style={{ fontSize:14, fontWeight:700, color:C.text1, fontVariantNumeric:'tabular-nums' }}>
+            {loading ? '…' : (() => {
+              const mins = kpis?.minutos_total || 0;
+              const h = Math.floor(mins / 60);
+              const m = Math.round(mins % 60);
+              return h > 0 ? `${h}h ${m}m` : `${m} min`;
+            })()}
+          </span>
+        </div>
+
         {/* Filtro por campaña */}
         <div style={{ display:'flex', alignItems:'center', gap:8, marginLeft:'auto' }}>
           <span style={{ fontSize:11, color:C.text3 }}>Campaña</span>
@@ -229,6 +280,7 @@ export default function AztecaDashboard({ user }) {
         <KpiCard label="Negativas"         value={loading?'…':(kpis?.negativas||0).toLocaleString()}       color={C.red}    icon="❌" />
       </div>
 
+
       {/* Desglose por SDA y por campaña */}
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:'1rem' }}>
 
@@ -246,7 +298,41 @@ export default function AztecaDashboard({ user }) {
 
         {/* Desglose resultado agente */}
         <div style={{ background:C.bg2, border:`0.5px solid ${C.border}`, borderRadius:8, padding:'14px 16px' }}>
-          <div style={{ fontSize:11, color:C.text2, textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:12 }}>Resultado de gestión</div>
+          {/* Header con selector de herramienta */}
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+            <span style={{ fontSize:11, color:C.text2, textTransform:'uppercase', letterSpacing:'0.1em' }}>
+              Resultado de gestión
+            </span>
+            <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+              <span style={{ fontSize:10, color:C.text3 }}>Herramienta</span>
+              <select
+                value={herramienta}
+                onChange={e => setHerramienta(e.target.value)}
+                style={{
+                  background: '#1e2535',
+                  border: `0.5px solid rgba(255,255,255,0.14)`,
+                  borderRadius: 4,
+                  color: C.text1,
+                  fontSize: 10,
+                  padding: '3px 6px',
+                  fontFamily: FONT,
+                  outline: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                <option value="todas">Todas</option>
+                <option value="predictivo">Predictivo</option>
+                <option value="blaster">Blaster</option>
+                <option value="ivr">IVR</option>
+              </select>
+              {herramienta !== 'todas' && (
+                <span style={{ fontSize:9, background:'rgba(245,158,11,0.12)', color:'#fbbf24', padding:'2px 6px', borderRadius:3, border:'0.5px solid rgba(245,158,11,0.25)' }}>
+                  Pendiente base completa
+                </span>
+              )}
+            </div>
+          </div>
+
           {loading ? <span style={{ fontSize:12, color:C.text3 }}>Cargando…</span> : kpis && (
             <>
               <BarraEstado label="Promesa de pago"  valor={kpis.promesas}    total={kpis.total} color={C.green}  />
@@ -268,6 +354,13 @@ export default function AztecaDashboard({ user }) {
           </div>
         </>
       )}
+
+      {/* Gráfica Costo + Minutos */}
+      <GraficaAzteca
+        tendencia={tendencia}
+        loading={loading}
+        campana={campanaFiltro}
+      />
 
       {/* Tabla de registros */}
       <SectionLabel>Registros de gestión</SectionLabel>
@@ -296,7 +389,7 @@ export default function AztecaDashboard({ user }) {
           <span style={{ width:5, height:5, borderRadius:'50%', background:C.green, display:'inline-block' }} /> Conectado
         </span>
       </div>
-      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}`}</style>
+      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 }

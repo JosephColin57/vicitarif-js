@@ -1,8 +1,8 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import useFechaUrl from './useFechaUrl';
 import NavTabs from './NavTabs';
-import GraficasPanel from './GraficasPanel';
+import GraficaGeneral from './GraficaGeneral';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis,
   Tooltip, ResponsiveContainer, CartesianGrid, Legend
@@ -121,9 +121,12 @@ export default function DashboardClient({ user }) {
   const [kpis, setKpis]               = useState(null);
   const [campanas, setCampanas]       = useState([]);
   const [tendencia, setTendencia]     = useState([]);
+  const [grafica, setGrafica]         = useState({ campanas:[], datos:[] });
   const [loading, setLoading]         = useState(true);
+  const [refreshing, setRefreshing]   = useState(false);
   const [error, setError]             = useState('');
   const [clock, setClock]             = useState('');
+  const isFirstLoad = useRef(true);
 
   useEffect(() => {
     const tick = () => setClock(new Date().toLocaleTimeString('es-MX', { hour12:false }));
@@ -133,28 +136,35 @@ export default function DashboardClient({ user }) {
   }, []);
 
   const fetchAll = useCallback(async () => {
-    setLoading(true); setError('');
+    if (isFirstLoad.current) { setLoading(true); }
+    else { setRefreshing(true); }
+    setError('');
     try {
       const params = new URLSearchParams({ desde, hasta });
-      const [rKpis, rCampanas, rTendencia] = await Promise.all([
+      const [rKpis, rCampanas, rTendencia, rGrafica] = await Promise.all([
         fetch(`/api/general/kpis?${params}`),
         fetch(`/api/general/campanas?${params}`),
         fetch(`/api/general/tendencia?${params}`),
+        fetch(`/api/general/grafica?${params}`),
       ]);
       if (rKpis.status === 401) { window.location.href = '/'; return; }
       setKpis(await rKpis.json());
       setCampanas(await rCampanas.json());
       setTendencia(await rTendencia.json());
+      setGrafica(await rGrafica.json());
+      isFirstLoad.current = false;
     } catch {
       setError('Error al cargar datos.');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [desde, hasta]);
 
   useEffect(() => {
+    isFirstLoad.current = true;
     fetchAll();
-    const id = setInterval(fetchAll, 60_000);
+    const id = setInterval(() => fetchAll(), 60_000);
     return () => clearInterval(id);
   }, [fetchAll]);
 
@@ -190,6 +200,15 @@ export default function DashboardClient({ user }) {
           </span>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color:C.teal, background:'rgba(34,211,165,0.1)', border:'0.5px solid rgba(34,211,165,0.3)', padding:'4px 10px', borderRadius:4 }}>
+            <span style={{ width:6, height:6, borderRadius:'50%', background:C.teal, display:'inline-block', animation: refreshing ? 'none' : 'pulse 2s infinite' }} />
+            {refreshing ? (
+              <span style={{ display:'flex', alignItems:'center', gap:5 }}>
+                <span style={{ width:10, height:10, border:'1.5px solid rgba(34,211,165,0.3)', borderTop:'1.5px solid #22d3a5', borderRadius:'50%', display:'inline-block', animation:'spin .7s linear infinite' }} />
+                Actualizando…
+              </span>
+            ) : 'En vivo'}
+          </div>
           <span style={{ fontSize:12, color:C.text3, fontVariantNumeric:'tabular-nums' }}>{clock}</span>
           <button onClick={handleLogout} style={{ background:'transparent', border:'0.5px solid rgba(239,68,68,0.3)', borderRadius:4, color:'#f87171', fontSize:11, padding:'5px 10px', cursor:'pointer', fontFamily:FONT }}>Salir</button>
         </div>
@@ -216,6 +235,32 @@ export default function DashboardClient({ user }) {
           <button onClick={fetchAll} style={{ background:C.blue, border:'none', borderRadius:4, color:'#fff', fontSize:11, padding:'5px 12px', cursor:'pointer', fontFamily:FONT }}>Aplicar</button>
         </div>
 
+        <div style={{ width:'0.5px', height:20, background:C.border }} />
+
+        {/* Costo total */}
+        <div style={{ display:'flex', alignItems:'center', gap:8, background:'rgba(167,139,250,0.08)', border:'0.5px solid rgba(167,139,250,0.25)', borderRadius:6, padding:'6px 12px' }}>
+          <span style={{ fontSize:10, color:'#c4b5fd' }}>💲 Costo</span>
+          <span style={{ fontSize:14, fontWeight:700, color:C.text1, fontVariantNumeric:'tabular-nums' }}>
+            {loading ? '…' : `$${(kpis?.costo_total||0).toFixed(2)}`}
+          </span>
+        </div>
+
+        {/* Minutos totales */}
+        <div style={{ display:'flex', alignItems:'center', gap:8, background:'rgba(56,189,248,0.08)', border:'0.5px solid rgba(56,189,248,0.22)', borderRadius:6, padding:'6px 12px' }}>
+          <span style={{ fontSize:10, color:'#7dd3fc' }}>⏱ Minutos</span>
+          <span style={{ fontSize:14, fontWeight:700, color:C.text1, fontVariantNumeric:'tabular-nums' }}>
+            {loading ? '…' : (() => {
+              const mins = kpis?.minutos_total || 0;
+              const h = Math.floor(mins / 60);
+              const m = Math.round(mins % 60);
+              return h > 0 ? `${h}h ${m}m` : `${m} min`;
+            })()}
+          </span>
+        </div>
+
+        <span style={{ fontSize:11, color:C.text3, marginLeft:'auto' }}>
+          📅 {esRango ? `${desde} → ${hasta}` : desde}
+        </span>
       </div>
 
       {error && (
@@ -267,13 +312,21 @@ export default function DashboardClient({ user }) {
         </>
       )}
 
+      {/* Gráfica Costo + Minutos por campaña */}
+      <SectionLabel>Costo y minutos por día</SectionLabel>
+      <GraficaGeneral
+        datos={grafica.datos}
+        campanas={grafica.campanas || []}
+        loading={loading}
+      />
+
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 0', borderTop:`0.5px solid ${C.border}`, marginTop:8 }}>
         <span style={{ fontSize:10, color:C.text3 }}>ViciTarif · PostgreSQL · Next.js</span>
         <span style={{ fontSize:10, color:C.green, display:'flex', alignItems:'center', gap:5 }}>
           <span style={{ width:5, height:5, borderRadius:'50%', background:C.green, display:'inline-block' }} /> Conectado
         </span>
       </div>
-      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}`}</style>
+      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 }
