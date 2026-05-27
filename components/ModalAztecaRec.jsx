@@ -172,7 +172,7 @@ export default function ModalAztecaRec({ numero, desde, hasta, onClose }) {
                   <div style={{ overflowX:'auto' }}>
                     <table style={{ width:'100%', borderCollapse:'collapse' }}>
                       <thead>
-                        <tr>{['Fecha','Usuario','SDA','Estado','Campaña'].map(h=><th key={h} style={TH}>{h}</th>)}</tr>
+                        <tr>{['Fecha','Hora','Usuario','SDA','Estado','Campaña'].map(h=><th key={h} style={TH}>{h}</th>)}</tr>
                       </thead>
                       <tbody>
                         {data.historial.map((h,i) => (
@@ -180,6 +180,7 @@ export default function ModalAztecaRec({ numero, desde, hasta, onClose }) {
                             onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.02)'}
                             onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
                             <td style={{ ...TD, color:C.text1 }}>{h.fecha}</td>
+                            <td style={{ ...TD, color:C.text2, fontVariantNumeric:'tabular-nums' }}>{h.hora}</td>
                             <td style={TD}>{h.usuario}</td>
                             <td style={TD}><Pill label={h.sda} colorFn={sdaColor} /></td>
                             <td style={TD}><Pill label={h.status_name} colorFn={estadoColor} /></td>

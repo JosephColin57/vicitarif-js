@@ -1,7 +1,7 @@
 'use client';
 // components/AztecaTabla.jsx
 
-import { useState } from 'react';
+import { useState, useCallback, useRef } from 'react';
 
 const C = {
   bg2:'#161b27', border:'rgba(255,255,255,0.08)',
@@ -43,8 +43,8 @@ function Pill({ label, styleFn }) {
 }
 
 function descargarCSV(datos, desde, hasta, campana) {
-  const headers = ['Fecha','Usuario','Teléfono','SDA','Estado','Campaña'];
-  const rows    = datos.map(r => [r.fecha, r.usuario, r.phone, r.sda, r.status_name, r.campania]);
+  const headers = ['Últ.Fecha','Usuario','Teléfono','SDA','Último estado','Campaña','Contactos'];
+  const rows    = datos.map(r => [r.fecha, r.usuario, r.phone, r.sda, r.status_name, r.campania, r.total_contactos||1]);
   const csv     = [headers,...rows].map(r => r.map(v=>`"${(v||'').toString().replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob    = new Blob(['\uFEFF'+csv], { type:'text/csv;charset=utf-8;' });
   const url     = URL.createObjectURL(blob);
@@ -56,8 +56,8 @@ function descargarCSV(datos, desde, hasta, campana) {
 }
 
 function descargarExcel(datos, desde, hasta, campana) {
-  const headers = ['Fecha','Usuario','Teléfono','SDA','Estado','Campaña'];
-  const filas   = datos.map(r => [r.fecha, r.usuario, r.phone, r.sda, r.status_name, r.campania]);
+  const headers = ['Últ.Fecha','Usuario','Teléfono','SDA','Último estado','Campaña','Contactos'];
+  const filas   = datos.map(r => [r.fecha, r.usuario, r.phone, r.sda, r.status_name, r.campania, r.total_contactos||1]);
   const esc     = v => String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const xml     = `<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?>
 <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
@@ -78,26 +78,40 @@ function descargarExcel(datos, desde, hasta, campana) {
 const TH = { fontSize:10, color:C.text3, textTransform:'uppercase', letterSpacing:'0.08em', padding:'8px 14px', textAlign:'left', borderBottom:`0.5px solid ${C.border}`, fontWeight:500, whiteSpace:'nowrap' };
 const TD = { padding:'9px 14px', color:C.text2, borderBottom:`0.5px solid ${C.border}`, fontSize:12 };
 
-export default function AztecaTabla({ llamadas, loading, desde, hasta, campana, onVerRecurrencia }) {
-  const [pagina, setPagina] = useState(1);
-  const [filtro, setFiltro] = useState('');
+export default function AztecaTabla({ llamadas, loading, desde, hasta, campana, onVerRecurrencia, onBuscar }) {
+  const [pagina, setPagina]       = useState(1);
+  const [filtro, setFiltro]       = useState('');
   const [filtroEstado, setFiltroEstado] = useState('');
+  const [buscandoBD, setBuscandoBD]    = useState(false);
+  const timerRef = useRef(null);
   const POR_PAGINA = 20;
+
+  // Búsqueda con debounce — cualquier texto de 3+ chars busca en la BD
+  const handleFiltro = useCallback((valor) => {
+    setFiltro(valor);
+    setPagina(1);
+    clearTimeout(timerRef.current);
+    if (valor.length >= 3) {
+      setBuscandoBD(true);
+      timerRef.current = setTimeout(() => {
+        onBuscar(valor);
+        setBuscandoBD(false);
+      }, 600);
+    } else if (valor === '') {
+      onBuscar('');
+    }
+  }, [onBuscar]);
 
   const estadosUnicos = [...new Set(llamadas.map(l => l.status_name))].sort();
 
   const filtradas = llamadas.filter(l => {
-    const matchTexto = !filtro ||
-      l.phone?.includes(filtro) ||
-      l.usuario?.toLowerCase().includes(filtro.toLowerCase()) ||
-      l.campania?.toLowerCase().includes(filtro.toLowerCase());
     const matchEstado = !filtroEstado || l.status_name === filtroEstado;
-    return matchTexto && matchEstado;
+    return matchEstado;
   });
 
   const totalPags = Math.ceil(filtradas.length / POR_PAGINA);
   const paginadas = filtradas.slice((pagina-1)*POR_PAGINA, pagina*POR_PAGINA);
-  const headers   = ['Fecha','Usuario','Teléfono','SDA','Estado','Campaña'];
+  const headers = ['Últ. fecha','Usuario','Teléfono','SDA','Último estado','Campaña','Contactos'];
 
   return (
     <div style={{ background:C.bg2, border:`0.5px solid ${C.border}`, borderRadius:8, overflow:'hidden', marginBottom:'1rem' }}>
@@ -107,11 +121,16 @@ export default function AztecaTabla({ llamadas, loading, desde, hasta, campana, 
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
           <span style={{ fontSize:11, letterSpacing:'0.1em', color:C.text2, textTransform:'uppercase' }}>Gestión Azteca</span>
           <span style={{ fontSize:10, color:C.text3 }}>{filtradas.length} registros</span>
+          {filtro.length >= 3 && (
+            <span style={{ fontSize:9, color:C.blue, background:'rgba(59,130,246,0.1)', border:'0.5px solid rgba(59,130,246,0.25)', borderRadius:3, padding:'2px 6px' }}>
+              🔍 Buscando en BD completa
+            </span>
+          )}
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-          <input type="text" placeholder="Teléfono, usuario, campaña..."
-            value={filtro} onChange={e => { setFiltro(e.target.value); setPagina(1); }}
-            style={{ background:'#1e2535', border:`0.5px solid rgba(255,255,255,0.14)`, borderRadius:4, color:C.text1, fontSize:11, padding:'5px 10px', fontFamily:'inherit', outline:'none', width:200 }} />
+          <input type="text" placeholder="Buscar teléfono, usuario o campaña..."
+            value={filtro} onChange={e => handleFiltro(e.target.value)}
+            style={{ background:'#1e2535', border:`0.5px solid ${buscandoBD ? C.blue : 'rgba(255,255,255,0.14)'}`, borderRadius:4, color:C.text1, fontSize:11, padding:'5px 10px', fontFamily:'inherit', outline:'none', width:240, transition:'border-color .2s' }} />
           <select value={filtroEstado} onChange={e => { setFiltroEstado(e.target.value); setPagina(1); }}
             style={{ background:'#1e2535', border:`0.5px solid rgba(255,255,255,0.14)`, borderRadius:4, color:C.text1, fontSize:11, padding:'5px 8px', fontFamily:'inherit', outline:'none', maxWidth:180 }}>
             <option value="">Todos los estados</option>
@@ -162,6 +181,16 @@ export default function AztecaTabla({ llamadas, loading, desde, hasta, campana, 
                     <td style={TD}><Pill label={r.sda} styleFn={sdaStyle} /></td>
                     <td style={TD}><Pill label={r.status_name} styleFn={estadoStyle} /></td>
                     <td style={{ ...TD, fontSize:11, color:C.text3 }}>{r.campania}</td>
+                    <td style={TD}>
+                      <span style={{
+                        fontSize:11, fontWeight:600, color: r.total_contactos > 5 ? '#f59e0b' : r.total_contactos > 1 ? '#60a5fa' : C.text3,
+                        background: r.total_contactos > 1 ? 'rgba(59,130,246,0.08)' : 'transparent',
+                        padding: r.total_contactos > 1 ? '2px 7px' : '0',
+                        borderRadius:3,
+                      }}>
+                        {r.total_contactos || 1}×
+                      </span>
+                    </td>
                   </tr>
                 ))
             }

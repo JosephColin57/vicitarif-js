@@ -10,7 +10,7 @@ export async function GET(req) {
         COUNT(*)                                                     AS total,
         COUNT(DISTINCT phone_number)
           FILTER (WHERE phone_number ~ '^[0-9]{10}$')               AS nums_unicos,
-        COUNT(DISTINCT campania)                                     AS total_campanas,
+        COUNT(DISTINCT campana)                                     AS total_campanas,
         COUNT(*) FILTER (WHERE sda ILIKE 'ANSWERED%')               AS contestadas,
         COUNT(*) FILTER (WHERE status_name ILIKE '%promesa%')       AS promesas,
         COUNT(*) FILTER (WHERE status_name ILIKE '%pago%'

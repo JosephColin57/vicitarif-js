@@ -7,10 +7,10 @@ export async function GET(req) {
   try {
     const { rows } = await pool.query(`
       SELECT
-        campania,
+        campana,
         COUNT(*)                                                 AS total,
         COUNT(DISTINCT phone_number)                             AS nums_unicos,
-        COUNT(*) FILTER (WHERE sda ILIKE 'ANSWERED%')           AS contestadas,
+        COUNT(*) FILTER (WHERE costo_llamada > 0) AS contestadas,
         COUNT(*) FILTER (WHERE status_name ILIKE '%promesa%')   AS promesas,
         COUNT(*) FILTER (WHERE status_name ILIKE '%pago%'
           AND status_name NOT ILIKE '%promesa%')                AS pagos,
@@ -22,14 +22,19 @@ export async function GET(req) {
       FROM azteca_registros
       WHERE fecha BETWEEN $1 AND $2
         AND phone_number ~ '^[0-9]{10}$'
-      GROUP BY campania ORDER BY total DESC
+      GROUP BY campana
+ORDER BY
+  CASE campana
+    WHEN 'Sin costo' THEN -1
+    ELSE COUNT(*) FILTER (WHERE costo_llamada > 0) * 100.0 / NULLIF(COUNT(*), 0)
+  END DESC
     `, [desde, hasta]);
     return NextResponse.json(rows.map(r => {
       const total = parseInt(r.total)||0;
       const contestadas = parseInt(r.contestadas)||0;
       const promesas = parseInt(r.promesas)||0;
       return {
-        campania: r.campania, total,
+        campana: r.campana, total,
         nums_unicos:  parseInt(r.nums_unicos)||0,
         contestadas, promesas,
         pagos:       parseInt(r.pagos)||0,

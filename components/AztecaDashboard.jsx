@@ -165,8 +165,19 @@ export default function AztecaDashboard({ user }) {
     else { setRango(fechaOffset(r.dias), hoy, r.label); }
   };
 
+  const buscarTelefono = useCallback(async (tel) => {
+    if (!tel) { fetchAll(); return; }
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ buscar: tel });
+      if (campanaFiltro) params.set('campana', campanaFiltro);
+      const res = await fetch(`/api/azteca/llamadas?${params}`);
+      setLlamadas(await res.json());
+    } catch { setError('Error al buscar.'); }
+    finally { setLoading(false); }
+  }, [campanaFiltro, fetchAll]);
   const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method:'POST' });
+    await fetch('/api/auth/logout', { method: 'POST' });
     window.location.href = '/';
   };
 
@@ -371,6 +382,7 @@ export default function AztecaDashboard({ user }) {
         hasta={hasta}
         campana={campanaFiltro}
         onVerRecurrencia={setNumeroModal}
+        onBuscar={buscarTelefono}
       />
 
       {/* Modal recurrencia */}

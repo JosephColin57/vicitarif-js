@@ -11,26 +11,26 @@ export async function GET(req) {
   try {
     // Paso 1: campañas activas en el rango
     const { rows: campRows } = await pool.query(`
-      SELECT DISTINCT campania
+      SELECT DISTINCT campana
       FROM azteca_registros
       WHERE fecha BETWEEN $1 AND $2
         AND phone_number ~ '^[0-9]{10}$'
-      ORDER BY campania
+      ORDER BY campana
     `, [desde, hasta]);
-    const campanas = campRows.map(r => r.campania);
+    const campanas = campRows.map(r => r.campana);
 
     // Paso 2: costo y minutos por día + campaña
     const { rows } = await pool.query(`
       SELECT
         fecha,
-        campania,
+        campana,
         COALESCE(SUM(costo_llamada), 0)        AS costo,
         COALESCE(SUM(duracion_seg),  0) / 60.0 AS minutos
       FROM azteca_registros
       WHERE fecha BETWEEN $1 AND $2
         AND phone_number ~ '^[0-9]{10}$'
-      GROUP BY fecha, campania
-      ORDER BY fecha ASC, campania
+      GROUP BY fecha, campana
+      ORDER BY fecha ASC, campana
     `, [desde, hasta]);
 
     // Paso 3: pivotar — una fila por fecha con columna por campaña
@@ -43,8 +43,8 @@ export async function GET(req) {
       }
       const costo   = parseFloat(parseFloat(r.costo).toFixed(2));
       const minutos = parseFloat(parseFloat(r.minutos).toFixed(1));
-      porFecha[f][`costo_${r.campania}`]   = costo;
-      porFecha[f][`min_${r.campania}`]     = minutos;
+      porFecha[f][`costo_${r.campana}`]   = costo;
+      porFecha[f][`min_${r.campana}`]     = minutos;
       porFecha[f].costo_total   += costo;
       porFecha[f].minutos_total += minutos;
     });

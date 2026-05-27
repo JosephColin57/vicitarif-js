@@ -76,7 +76,7 @@ function TablaCampanas({ campanas, loading }) {
                 <td style={{ ...TD, color:C.text1, fontWeight:600 }}>
                   <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                     <div style={{ width:pct+'%', maxWidth:60, height:3, background:C.blue, borderRadius:2 }} />
-                    {c.campania}
+                    {c.campana}
                   </div>
                 </td>
                 <td style={{ ...TD, color:C.text1 }}>{c.total.toLocaleString()}</td>
@@ -250,10 +250,8 @@ export default function DashboardClient({ user }) {
           <span style={{ fontSize:10, color:'#7dd3fc' }}>⏱ Minutos</span>
           <span style={{ fontSize:14, fontWeight:700, color:C.text1, fontVariantNumeric:'tabular-nums' }}>
             {loading ? '…' : (() => {
-              const mins = kpis?.minutos_total || 0;
-              const h = Math.floor(mins / 60);
-              const m = Math.round(mins % 60);
-              return h > 0 ? `${h}h ${m}m` : `${m} min`;
+              const mins = Math.round(kpis?.minutos_total || 0);
+              return `${mins.toLocaleString()} min`;
             })()}
           </span>
         </div>

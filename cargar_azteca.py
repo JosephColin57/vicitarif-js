@@ -1,24 +1,12 @@
 #!/usr/bin/env python3
-# ============================================================
-#  cargar_azteca.py v2 — Usa lead_id para evitar duplicados reales
-#
-#  Uso:
-#    python3 cargar_azteca.py azteca_18052026.xlsx
-#    python3 cargar_azteca.py /ruta/*.xlsx   (varios archivos)
-#
-#  Dependencias:
-#    pip3 install pandas openpyxl psycopg2-binary
-# ============================================================
+# cargar_azteca.py v6 — estructura completa del Excel (26 columnas reales)
 
-import sys
-import os
-import re
+import sys, os, re
 import pandas as pd
 import psycopg2
 from psycopg2.extras import execute_batch
 from datetime import datetime
 
-# ── Configuración de BD ──────────────────────────────────────
 DB_CONFIG = {
     'host':     os.getenv('DB_HOST', 'localhost'),
     'port':     int(os.getenv('DB_PORT', '5432')),
@@ -27,194 +15,224 @@ DB_CONFIG = {
     'dbname':   os.getenv('DB_NAME', 'vicitarif'),
 }
 
-# ── Índices de columnas del xlsx ─────────────────────────────
-COL_LEAD_ID     = 0   # A  — lead_id
-COL_DATE        = 3   # D  — date
-COL_STATUS      = 4   # E  — status
-COL_USER        = 5   # F  — user
-COL_PHONE       = 12  # M  — phone_number
-COL_SDA         = 13  # N  — sda
-COL_STATUS_NAME = 37  # AL — status_name
-COL_CAMPANIA    = 39  # AN — campania_description
+# ── Índices reales de cada columna del Excel ──────────────────────────
+COL_UNIQUEID    = 0   # UNIQUEID
+COL_FECHA_HORA  = 1   # Fecha y hora  → TIMESTAMP
+COL_FECHA       = 2   # Fecha         → DATE
+COL_HORA        = 3   # Hora          → TIME
+COL_SERVER_IP   = 4   # SERVER_IP
+COL_TELEFONO    = 5   # TELEFONO
+COL_PREFIJO     = 6   # PREFIJO
+COL_LIST_ID     = 7   # LIST_ID
+COL_FIRST_NAME  = 8   # FIRST_NAME
+COL_ADDRESS1    = 9   # ADDRESS1
+COL_ADDRESS2    = 10  # ADDRESS2
+COL_ADDRESS3    = 11  # ADDRESS3
+COL_CITY        = 12  # CITY
+COL_DURACION    = 13  # TIEMPO-REAL (segundos)
+COL_MIN_SEG     = 14  # MIN-SEG (MM:SS)
+COL_REDON       = 15  # REDON-TIEMPO
+COL_CAMPAIGN    = 16  # CAMPAIGN (código corto)
+COL_AGENTE      = 17  # AGENTE
+COL_GRUPO       = 18  # GRUPO
+COL_CALL_STATUS = 19  # CALL_STATUS (SDA)
+COL_STATUS      = 20  # Status (descripción)
+COL_TIPO        = 21  # TIPO
+COL_RED         = 22  # RED
+COL_COSTO       = 23  # Costo  (columna ' Costo' con espacio)
+COL_CAMPANA     = 24  # Campana (nombre largo)
+COL_HERRAMIENTA = 25  # Herramienta
+
 
 def limpiar(v):
-    if v is None or (isinstance(v, float) and pd.isna(v)):
-        return None
-    return str(v).strip() or None
-
-def limpiar_telefono(v):
+    """Devuelve None si el valor está vacío, es NaN o es un guión."""
     if v is None or (isinstance(v, float) and pd.isna(v)):
         return None
     s = str(v).strip()
-    if s.upper().startswith('V'):
-        return s
-    solo = re.sub(r'\D', '', s)
-    return solo if len(solo) == 10 else s
+    return s if s and s not in ('-', 'nan', 'NaN') else None
 
-def preparar_schema(cur):
-    """Asegura que la tabla tenga la columna lead_id y el índice correcto."""
-    # Agregar columna lead_id si no existe
-    cur.execute("""
-        ALTER TABLE azteca_registros 
-        ADD COLUMN IF NOT EXISTS lead_id BIGINT;
-    """)
-    # Eliminar índice restrictivo anterior si existe
-    cur.execute("DROP INDEX IF EXISTS idx_azt_unique;")
-    # Crear índice correcto basado en lead_id + archivo
-    cur.execute("""
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_azt_lead_archivo
-        ON azteca_registros (lead_id, archivo_origen)
-        WHERE lead_id IS NOT NULL;
-    """)
 
-def cargar_archivo(ruta_archivo):
-    nombre_archivo = os.path.basename(ruta_archivo)
+def cargar_archivo(ruta):
+    nombre = os.path.basename(ruta)
     print(f"\n{'='*60}")
-    print(f"  Cargando: {nombre_archivo}")
+    print(f"  Cargando: {nombre}")
     print(f"{'='*60}")
 
-    # ── Leer Excel ────────────────────────────────────────────
     print("📖 Leyendo archivo Excel...")
     try:
-        df = pd.read_excel(ruta_archivo, sheet_name='azteca_18052026', dtype=str)
+        df = pd.read_excel(ruta, sheet_name='Hoja1', dtype=str)
     except Exception as e:
-        print(f"❌ Error al leer Excel: {e}")
+        print(f"❌ Error leyendo Excel: {e}")
         return False
 
-    total_filas = len(df)
-    print(f"   Filas encontradas: {total_filas:,}")
+    total = len(df)
+    print(f"   Filas encontradas: {total:,}")
 
-    # ── Procesar registros ────────────────────────────────────
-    print("🔄 Procesando registros...")
+    print("🔄 Procesando filas...")
     registros = []
     omitidos  = 0
-    errores   = 0
 
     for idx, row in df.iterrows():
         try:
-            # lead_id (columna A)
-            lead_id_raw = row.iloc[COL_LEAD_ID]
+            fila_excel = idx + 2  # +2 porque la fila 1 es el header
+
+            # ── Fecha y hora ──────────────────────────────────────────
+            fecha_hora_raw = row.iloc[COL_FECHA_HORA]
             try:
-                lead_id = int(float(lead_id_raw)) if lead_id_raw and not pd.isna(lead_id_raw) else None
-            except:
-                lead_id = None
-
-            # Fecha
-            fecha_raw = row.iloc[COL_DATE]
-            if pd.isna(fecha_raw) if isinstance(fecha_raw, float) else False:
+                dt         = pd.to_datetime(fecha_hora_raw)
+                fecha_hora = dt.to_pydatetime()
+                fecha      = dt.date()
+                hora       = dt.time()
+            except Exception:
                 omitidos += 1
                 continue
+
+            # ── Teléfono obligatorio ──────────────────────────────────
+            phone = limpiar(row.iloc[COL_TELEFONO])
+            if not phone:
+                omitidos += 1
+                continue
+            phone = re.sub(r'\D', '', phone)
+            if len(phone) != 10:
+                omitidos += 1
+                continue
+
+            # ── Campos opcionales ─────────────────────────────────────
+            uniqueid    = limpiar(row.iloc[COL_UNIQUEID])
+            server_ip   = limpiar(row.iloc[COL_SERVER_IP])
+            prefijo     = limpiar(row.iloc[COL_PREFIJO])
+            min_seg     = limpiar(row.iloc[COL_MIN_SEG])
+            first_name  = limpiar(row.iloc[COL_FIRST_NAME])
+            address1    = limpiar(row.iloc[COL_ADDRESS1])
+            address2    = limpiar(row.iloc[COL_ADDRESS2])
+            address3    = limpiar(row.iloc[COL_ADDRESS3])
+            city        = limpiar(row.iloc[COL_CITY])
+            agente      = limpiar(row.iloc[COL_AGENTE])
+            grupo       = limpiar(row.iloc[COL_GRUPO])
+            tipo        = limpiar(row.iloc[COL_TIPO])
+            red         = limpiar(row.iloc[COL_RED])
+            campana     = limpiar(row.iloc[COL_CAMPANA])
+            herramienta = limpiar(row.iloc[COL_HERRAMIENTA]) or 'Blaster'
+            campania    = limpiar(row.iloc[COL_CAMPAIGN])    or 'SIN_CAMPAÑA'
+            sda         = limpiar(row.iloc[COL_CALL_STATUS])
+            status_name = limpiar(row.iloc[COL_STATUS])      or 'SIN_STATUS'
+
             try:
-                fecha = pd.to_datetime(fecha_raw).date()
-            except:
-                omitidos += 1
-                continue
+                list_id = int(float(row.iloc[COL_LIST_ID])) if limpiar(row.iloc[COL_LIST_ID]) else None
+            except Exception:
+                list_id = None
 
-            # Campos obligatorios
-            phone       = limpiar_telefono(row.iloc[COL_PHONE])
-            status_name = limpiar(row.iloc[COL_STATUS_NAME])
-            campania    = limpiar(row.iloc[COL_CAMPANIA])
+            try:
+                redon = int(float(row.iloc[COL_REDON])) if limpiar(row.iloc[COL_REDON]) else 0
+            except Exception:
+                redon = 0
 
-            if not phone or not status_name or not campania:
-                omitidos += 1
-                continue
+            try:
+                duracion = int(float(row.iloc[COL_DURACION])) if limpiar(row.iloc[COL_DURACION]) else 0
+            except Exception:
+                duracion = 0
+
+            try:
+                costo = float(row.iloc[COL_COSTO]) if limpiar(row.iloc[COL_COSTO]) else 0.0
+            except Exception:
+                costo = 0.0
 
             registros.append((
-                lead_id,
-                fecha,
-                limpiar(row.iloc[COL_STATUS]),
-                limpiar(row.iloc[COL_USER]),
-                phone,
-                limpiar(row.iloc[COL_SDA]),
-                status_name,
-                campania,
-                nombre_archivo,
+                uniqueid, fecha_hora, fecha, hora,
+                server_ip, phone, prefijo, list_id,
+                first_name, address1, address2, address3, city,
+                duracion, min_seg, redon,
+                campania, agente, grupo,
+                sda, status_name, tipo, red,
+                costo, campana, herramienta,
+                nombre, fila_excel,
             ))
+
         except Exception as e:
-            errores += 1
-            if errores <= 3:
-                print(f"   ⚠ Error fila {idx+2}: {e}")
+            omitidos += 1
+            if omitidos <= 20:
+                print(f"   ⚠️  Fila {idx+2} omitida: {e}")
 
-    print(f"   Registros válidos:  {len(registros):,}")
-    print(f"   Omitidos:           {omitidos:,}")
-    if errores:
-        print(f"   Errores parseo:     {errores:,}")
+    print(f"   Válidos:  {len(registros):,}")
+    print(f"   Omitidos: {omitidos:,}")
 
-    # ── Insertar en PostgreSQL ────────────────────────────────
+    if not registros:
+        print("⚠️  Sin registros válidos para insertar.")
+        return False
+
     print("📤 Insertando en PostgreSQL...")
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         cur  = conn.cursor()
 
-        # Preparar schema (agrega columna lead_id y corrige índice)
-        preparar_schema(cur)
-        conn.commit()
-
         sql = """
-            INSERT INTO azteca_registros
-              (lead_id, fecha, status, usuario, phone_number, sda,
-               status_name, campania, archivo_origen)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (lead_id, archivo_origen)
-            WHERE lead_id IS NOT NULL
+            INSERT INTO azteca_registros (
+                uniqueid, fecha_hora, fecha, hora,
+                server_ip, phone_number, prefijo, list_id,
+                first_name, address1, address2, address3, city,
+                duracion_seg, min_seg, redon_tiempo,
+                campania, usuario, grupo,
+                sda, status_name, tipo, red,
+                costo_llamada, campana, herramienta,
+                archivo_origen, fila_excel
+            ) VALUES (
+                %s,%s,%s,%s,
+                %s,%s,%s,%s,
+                %s,%s,%s,%s,%s,
+                %s,%s,%s,
+                %s,%s,%s,
+                %s,%s,%s,%s,
+                %s,%s,%s,
+                %s,%s
+            )
+            ON CONFLICT (archivo_origen, fila_excel)
+            WHERE fila_excel IS NOT NULL
             DO NOTHING
         """
         execute_batch(cur, sql, registros, page_size=2000)
         conn.commit()
 
-        # Contar total en BD para este archivo
         cur.execute(
-            "SELECT COUNT(*) FROM azteca_registros WHERE archivo_origen = %s",
-            (nombre_archivo,)
+            "SELECT COUNT(*), COALESCE(SUM(costo_llamada),0) "
+            "FROM azteca_registros WHERE archivo_origen=%s",
+            (nombre,)
         )
-        total_bd = cur.fetchone()[0]
+        total_bd, costo_bd = cur.fetchone()
         cur.close()
         conn.close()
 
         print(f"\n✅ Carga completada")
-        print(f"   Registros procesados:    {len(registros):,}")
-        print(f"   Registros en BD:         {total_bd:,}")
-        if total_bd < len(registros):
-            print(f"   Duplicados ignorados:    {len(registros)-total_bd:,}")
+        print(f"   Registros en BD: {total_bd:,}")
+        print(f"   Costo total:     ${float(costo_bd):.4f}")
 
     except psycopg2.Error as e:
         print(f"❌ Error PostgreSQL: {e}")
         return False
 
-    # ── Resumen ───────────────────────────────────────────────
-    numeros_reales = sum(1 for r in registros if r[4] and not r[4].upper().startswith('V') and len(re.sub(r'\D','',r[4]))==10)
-    internos       = sum(1 for r in registros if r[4] and r[4].upper().startswith('V'))
-    campanas       = len(set(r[7] for r in registros if r[7]))
-    estados        = len(set(r[6] for r in registros if r[6]))
-
-    print(f"\n📊 Resumen:")
-    print(f"   Números reales (10 dígitos): {numeros_reales:,}")
-    print(f"   IDs internos Vicidial (V...): {internos:,}")
-    print(f"   Campañas distintas:          {campanas}")
-    print(f"   Estados distintos:           {estados}")
     return True
+
 
 def main():
     if len(sys.argv) < 2:
         print("Uso: python3 cargar_azteca.py <archivo.xlsx> [archivo2.xlsx ...]")
         sys.exit(1)
 
-    inicio   = datetime.now()
-    archivos = sys.argv[1:]
-    ok = 0
+    inicio = datetime.now()
+    ok     = 0
 
-    for archivo in archivos:
+    for archivo in sys.argv[1:]:
         if not os.path.exists(archivo):
             print(f"❌ No encontrado: {archivo}")
             continue
         if not archivo.endswith('.xlsx'):
-            print(f"⚠ Saltando {archivo} (no es .xlsx)")
+            print(f"⚠️  Ignorado (no es .xlsx): {archivo}")
             continue
         if cargar_archivo(archivo):
             ok += 1
 
-    duracion = (datetime.now() - inicio).seconds
-    print(f"\n⏱ Tiempo total: {duracion}s | Archivos cargados: {ok}/{len(archivos)}")
+    elapsed = (datetime.now() - inicio).seconds
+    print(f"\n⏱  {elapsed}s  |  Archivos cargados: {ok}/{len(sys.argv)-1}")
+
 
 if __name__ == '__main__':
     main()
