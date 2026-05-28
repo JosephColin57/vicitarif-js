@@ -1,10 +1,10 @@
 // app/page.jsx — Login page (Server Component)
-import { redirect }  from 'next/navigation';
-import { getSession } from '@/lib/auth';
-import LoginForm     from '@/components/LoginForm';
+import { redirect }    from 'next/navigation';
+import { AuthService } from '@/lib/auth';
+import LoginForm       from '@/components/LoginForm';
 
 export default async function LoginPage() {
-  const session = await getSession();
+  const session = await AuthService.getSession();
   if (session) redirect('/dashboard');
 
   return (

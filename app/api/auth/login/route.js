@@ -1,6 +1,6 @@
 // app/api/auth/login/route.js
-import { NextResponse }                        from 'next/server';
-import { verifyCredentials, createToken, COOKIE_OPTIONS } from '@/lib/auth';
+import { NextResponse }  from 'next/server';
+import { AuthService }   from '@/lib/auth';
 
 export async function POST(req) {
   try {
@@ -10,24 +10,27 @@ export async function POST(req) {
       return NextResponse.json({ error: 'username y password son requeridos' }, { status: 400 });
     }
 
-    const user = await verifyCredentials(username, password);
+    const user = await AuthService.verifyCredentials(username, password);
     if (!user) {
       await new Promise(r => setTimeout(r, 300)); // anti-timing attack
       return NextResponse.json({ error: 'Credenciales incorrectas' }, { status: 401 });
     }
 
-    const token = await createToken({
+    // campana se incluye en el token para que los routes puedan
+    // hacer enforcement sin consultar la BD en cada petición
+    const token = await AuthService.createToken({
       sub:      user.id,
       username: user.username,
       role:     user.role,
       nombre:   user.nombre,
+      campana:  user.campana,   // ← valor de campania que puede ver este usuario
     });
 
     const res = NextResponse.json({
-      user: { id: user.id, username: user.username, role: user.role, nombre: user.nombre },
+      user: { id: user.id, username: user.username, role: user.role, nombre: user.nombre, campana: user.campana },
     });
 
-    res.cookies.set({ ...COOKIE_OPTIONS, value: token });
+    res.cookies.set({ ...AuthService.cookieOptions, value: token });
     return res;
   } catch (err) {
     console.error('[POST /api/auth/login]', err);
